@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Environment variables
+.env
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+*.ps1
+
+# Data files
+*.csv
+*.json
+*.pkl
+
+# Logs
+*.log
+
+# Local development settings
+local_settings.py
+
+# System Files
+.DS_Store
+Thumbs.db
