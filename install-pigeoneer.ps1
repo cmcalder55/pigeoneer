@@ -1,6 +1,18 @@
 # Install script for Pigeoneer - PoE Trade Message Watcher
 $ErrorActionPreference = "Stop"
 
+# Check if running as administrator
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+    Write-Error "This script needs to be run as Administrator to register the scheduled task.`n"
+    Write-Host "To run as Administrator:"
+    Write-Host "1. Right-click PowerShell"
+    Write-Host "2. Select 'Run as Administrator'"
+    Write-Host "3. Navigate to the script directory"
+    Write-Host "4. Run .\install-pigeoneer.ps1"
+    exit 1
+}
+
 try {
     $ScriptPath = Join-Path $PSScriptRoot "run.py"
     if (-not (Test-Path $ScriptPath)) {
@@ -51,7 +63,7 @@ $Action   = New-ScheduledTaskAction -Execute $Pythonw -Argument "`"$ScriptPath`"
 $Trigger  = New-ScheduledTaskTrigger -AtStartup
 $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
              -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
-$Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType InteractiveToken
+$Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
 
 # Create / update task
 $TaskDescription = "Pigeoneer - Path of Exile Trade Message Watcher for Telegram notifications"
