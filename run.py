@@ -4,7 +4,9 @@ import os
 import sys
 import json
 import logging
+import threading
 from pathlib import Path
+from typing import List
 from urllib import parse, request, error
 
 def setup_logging(log_path: Path) -> None:
@@ -94,8 +96,6 @@ def send_message(text: str, chat_id: str, token: str, parse_mode: str | None = N
         _send_telegram(part, chat_id, token, parse_mode, disable_preview, silent)
 
 class Watcher():
-    running = True
-
     def __init__(self, currency = ["divine", "chaos", "divines"], show_header=False, refresh_delay_secs=1):
         if show_header:
             self.header()
@@ -103,6 +103,8 @@ class Watcher():
         if len(currency) > 1:
             currency = "|".join(currency)
         self.pattern = r"(\d+)\s*({0})".format(currency)
+        self.running = True
+        self.watchers = []
         logging.info("Watcher initialized")
         
     def follow(self, logfile):
@@ -129,8 +131,9 @@ class Watcher():
         
         logging.info("\n".join(header_text))
 
-    def start(self, chat_id: str, token: str, log_path: Path):
-        logging.info("Starting trade message watcher")
+    def watch_file(self, chat_id: str, token: str, log_path: Path, game_id: int):
+        """Watch a single file for trade messages"""
+        logging.info(f"Starting watcher for: {log_path}")
         while self.running:
             try:
                 with open(log_path, "r", encoding='utf-8') as logfile:
@@ -144,17 +147,45 @@ class Watcher():
                                     'Item': 'N/A',
                                     'Sale Price': ' and '.join(map(lambda x:' '.join(x),match))
                                 }
-                                logging.info(f"Trade detected: {json.dumps(trade_request, indent=4)}")
+                                logging.info(f"[ PoE {game_id} ] Trade Request: {json.dumps(trade_request, indent=4)}")
                                 data = '\n'.join(('**{0}** : {1}'.format(k,v) for k,v in trade_request.items()))
-                                # Send via Telegram bot
                                 try:
                                     send_message(data, chat_id=chat_id, token=token, parse_mode='MARKDOWN', disable_preview=True)
-                                    logging.info("Message sent successfully")
+                                    logging.info(f"Message sent successfully.\n")
                                 except Exception as e:
-                                    logging.error(f"Failed to send message: {e}")
+                                    logging.error(f"Failed to send message for {log_path.name}: {e}\n")
             except Exception as e:
-                logging.error(f"Error watching log file: {e}")
+                logging.error(f"Error watching log file {log_path}: {e}")
                 time.sleep(5)  # Wait before retrying
+
+    def start(self, chat_id: str, token: str, log_paths:dict[int, Path]):
+        """Start watching multiple files in separate threads"""
+        logging.info(f"Starting trade message watcher for {len(log_paths)} files")
+        
+        # Create and start a thread for each file
+        for game_id, log_path in log_paths.items():
+            if not log_path.exists():
+                logging.error(f"Log file does not exist: {log_path}")
+                continue
+
+            thread = threading.Thread(
+                target=self.watch_file,
+                args=(chat_id, token, log_path, game_id),
+                name=f"Watcher-{log_path.name}",
+                daemon=True
+            )
+            self.watchers.append(thread)
+            thread.start()
+        
+        # Wait for all watchers to finish (they won't unless self.running is set to False)
+        try:
+            while any(w.is_alive() for w in self.watchers):
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logging.info("Shutting down watchers...")
+            self.running = False
+            for w in self.watchers:
+                w.join(timeout=5)
 
 def main():
     # Set up paths
@@ -172,19 +203,35 @@ def main():
     # Get configuration from environment variables
     token = os.getenv("TG_TOKEN")
     chat_id = os.getenv("TG_CHAT")
-    client_log = Path(os.getenv("CLIENT_LOG", "Client.txt"))
+    
+    # Check numbered client logs (CLIENT_LOG1, CLIENT_LOG2, etc.)
+    client_logs = []
+    game_client_logs = {
+        1: Path(os.getenv("CLIENT_LOG_POE1", "Client.txt")),
+        2: Path(os.getenv("CLIENT_LOG_POE2", "Client.txt"))
+    }
+    for logfile in game_client_logs.values():
+        if not logfile.exists():
+            logging.error(f"Client log file '{logfile}' does not exist.")
+            continue
+        client_logs.append(logfile)
 
-    if not client_log.exists():
-        logging.error(f"Client log file '{client_log}' does not exist.")
+    if not client_logs:
+        logging.error("No valid client log files found.")
         sys.exit(1)
+
+    # If no numbered logs found, try the default CLIENT_LOG
+    default_log = os.getenv("CLIENT_LOG")
+    if not client_logs and default_log:
+        client_logs.append(Path(default_log))
 
     if not all([token, chat_id]):
         logging.error("Missing required environment variables. Please set TG_TOKEN and TG_CHAT in .env file")
         sys.exit(1)
 
-    logging.info(f"Starting watcher with client log: {client_log}")
+    logging.info(f"Starting watcher with client logs: {', '.join(str(p) for p in client_logs)}")
     watcher = Watcher(show_header=True)
-    watcher.start(str(chat_id), str(token), client_log)
+    watcher.start(str(chat_id), str(token), game_client_logs)
 
 if __name__ == "__main__":
     main()
