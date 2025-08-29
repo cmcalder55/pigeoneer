@@ -190,15 +190,18 @@ class Watcher():
 def main():
     # Set up paths
     script_dir = Path(__file__).parent
-    default_root = Path(os.getenv("LOCALAPPDATA", Path.home())) / "NavalisOracle"
-    log_path = default_root / "agent.log"
+    env_file = script_dir / ".env"
+    log_path = script_dir / "pigeoneer.log"
     
     # Set up logging before anything else
     setup_logging(log_path)
     
-    # Load environment variables from .env files
-    _load_dotenv(script_dir / ".env")
-    _load_dotenv(default_root / ".env")
+    # Load environment variables from .env file in script directory
+    if not env_file.exists():
+        logging.error(f".env file not found in {script_dir}")
+        sys.exit(1)
+        
+    _load_dotenv(env_file)
     
     # Get configuration from environment variables
     token = os.getenv("TG_TOKEN")

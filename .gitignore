@@ -28,7 +28,6 @@ ENV/
 .coverage
 htmlcov/
 .pytest_cache/
-*.ps1
 
 # Data files
 *.csv
